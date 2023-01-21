@@ -1,0 +1,238 @@
+from controller import Robot
+from controller import Receiver
+import json
+import enum
+import math
+
+
+# Constants
+MAX_SPEED = 4
+GRID_SIZE=1
+MAZELEN=35
+MAZEWIDTH=35
+
+
+
+class Tile:
+    vis=False
+    N=False
+    E=False
+    S=False
+    W=False
+    
+    
+    def hasTileWall(self):
+        wall=False
+        if N or E or S or W:
+            wall = True
+        else:
+            wall = False
+            
+        return wall
+            
+#------------------------------------------------------------------
+
+#maze contain Tile list. list update when robot moving
+maze=[]
+
+########################################################################
+for i in range(0,100000):
+    maze.append(Tile())
+    
+
+section=0
+
+
+class Orient(enum.Enum):
+    N=0
+    E=1
+    S=2
+    W=3
+    
+
+
+def add(orientObj,n):
+    return Orient((orientObj.value+n)%4)
+
+
+def sub(orientObj,n):
+    return Orient((orientObj.value+4-n)%4)
+
+#################################################################
+robot = Robot()
+timestep = int(robot.getBasicTimeStep())
+receiver = robot.getDevice("receiver")
+receiver.enable(10)
+
+left = robot.getDevice('left wheel motor')
+right = robot.getDevice('right wheel motor')
+
+left.setPosition(float("inf"))
+right.setPosition(float("inf"))
+
+left.setVelocity(0)
+right.setVelocity(0)
+
+distance_sensors = []
+for i in range(8):
+    distance_sensors.append(robot.getDevice("ps" + str(i)))
+    distance_sensors[i].enable(timestep)
+    
+#-----------------------------------------------------------------------------------    
+
+
+def setWall(dir):
+    if dir==Orient.N:
+        maze[section].N=True
+        
+    elif dir==Orient.E:
+        maze[section].E=True
+        
+    elif dir==Orient.S:
+        maze[section].S=True
+        
+    elif dir==Orient.W:
+        maze[section].W=True
+        
+        
+def getSurroundings():
+    if distance_sensors[0].getValue() > 160:
+        setWall(orientation)
+    
+    if distance_sensors[2].getValue() > 160:
+        setWall(add(orientation,1))
+        
+    if distance_sensors[5].getValue() > 160:
+        setWall(sub(orientation,1))
+        
+    maze[section].vis=True
+    
+def get_current_cell_pos(position):
+ 
+  #cell_index = int( ((format(position[0],"f")*10000000) / cell_size) * ((format(position[1],"f")*1000000) / cell_size))
+  cell_index =  [int(round(position[0]*10,2)) , int(round(position[1]*15,2))]
+  return cell_index
+
+####################################################################################
+#Store the robot position and corrensponding index
+positionIndexes=[]
+####################################################################################
+
+prePos=[-1155212225,-155564]
+def setPositionIndex(position):
+    if position not in positionIndexes:
+        positionIndexes.append(position)
+
+#Movements
+robotAngleDegrees=359
+
+def turn(angle):
+    if robotAngleDegrees-angle<=0:
+        if robotAngleDegrees!=angle:
+            left.setVelocity(0.2)
+            right.setVelocity(-0.2)
+        else:
+            left.setVelocity(0)
+            right.setVelocity(0)
+    else:
+        if robotAngleDegrees!=angle:
+            left.setVelocity(-0.2)
+            right.setVelocity(0.2)
+        else:
+            left.setVelocity(0)
+            right.setVelocity(0)
+            
+    print(robotAngleDegrees-angle) 
+    setRobotAngle()    
+    
+        
+def setRobotAngle():
+    global orientation
+    if robotAngleDegrees==359:
+        orientation=Orient.N
+    elif robotAngleDegrees==90:
+        orientation=Orient.W
+    elif robotAngleDegrees==180:
+        orientation=Orient.S
+    elif robotAngleDegrees==270:
+        orientation=Orient.E
+        
+   
+          
+
+
+preSection=-1
+
+
+#Parent chil relation of tiles
+queue=[]
+tileRelation=[]
+queue.append(section)
+node=0
+
+def setTileRelation():
+   
+    node=queue.pop(0)
+    queue.append(section)
+    
+    
+    if len(tileRelation)-1 <section:
+        tileRelation.append([node])
+    elif len(tileRelation) - section > section-2:
+        newNode = tileRelation[len(tileRelation)-1].copy()
+        newNode.append(section)
+        
+        if newNode not in tileRelation:
+            tileRelation[len(tileRelation)-1]=newNode
+           
+
+
+
+
+
+while robot.step(timestep) != -1:
+    while receiver.getQueueLength() > 0:
+    
+        sensor_values = []
+        for sensor in distance_sensors:
+            sensor_values.append(sensor.getValue())
+            
+        #print(json.loads(receiver.getData().decode('utf-8')))
+        
+       
+        
+        robotAngleDegrees=int((json.loads(receiver.getData())).get('robotAngleDegrees'))
+        setRobotAngle()
+        #print("North: ")
+        #print(maze[section].N)
+        #print(get_current_cell_pos(json.loads(receiver.getData()).get('robot')))
+        
+        setPositionIndex(get_current_cell_pos(json.loads(receiver.getData()).get('robot')))
+        
+        section=positionIndexes.index(get_current_cell_pos(json.loads(receiver.getData()).get('robot')))
+        getSurroundings()
+       
+        #Set tile relation
+        if preSection!=section:
+            setTileRelation()
+            preSection=section
+        
+        
+        ################Follow
+        northWall=maze[section].N
+        eastWall=maze[section].E
+        southWall=maze[section].S
+        westWall=maze[section].W
+        visited=maze[section].vis
+        
+      
+     
+        
+        setRobotAngle()
+       
+        
+        #WRITE ROBOT MOVE CODE HERE. WARNING : SOME VARIABLES ARE ALLREADY DEFINED. EX: leftWall,rightWall... DO NOT MODIFY OR USE THEM FOR ROBOT MOVING ALGORITHM 
+        
+          
+        receiver.nextPacket()
+    pass
